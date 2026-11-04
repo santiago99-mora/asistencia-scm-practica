@@ -3,7 +3,7 @@ name: Verificación de Versión y Pruebas CI
 on:
   push:
     tags:
-      - 'v*'  # Se activa al publicar cualquier tag que comience con 'v'
+      - 'v*'
 
 jobs:
   verify-code:
@@ -18,6 +18,14 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Validar ejecución del módulo de asistencia
+      - name: Instalar dependencias
+        run: |
+          pip install pytest
+
+      - name: Ejecutar pruebas unitarias con Pytest
+        run: |
+          pytest -v
+
+      - name: Validar ejecución directa del módulo
         run: |
           python main.py
