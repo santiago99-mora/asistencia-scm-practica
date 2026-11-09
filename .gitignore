@@ -1,0 +1,15 @@
+# Entornos virtuales
+venv/
+.venv/
+env/
+
+# Caché de Python y Pytest
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Base de datos SQLite local (se genera automáticamente al iniciar)
+*.db
+*.db-journal
+*.db-wal

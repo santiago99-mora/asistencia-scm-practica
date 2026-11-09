@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sistema de Asistencia Académica</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+    <!-- NOTIFICACIONES TOAST -->
+    <div id="toast-container" class="toast-container" aria-live="polite"></div>
+
+    <!-- PANTALLA DE LOGIN -->
+    <main id="login-screen" class="login-wrapper">
+        <section class="login-card">
+            <div class="brand-header">
+                <div class="brand-icon">SA</div>
+                <div>
+                    <h1>Sistema de Asistencia</h1>
+                    <p class="subtitle">Panel Docente y Control Académico v3.0</p>
+                </div>
+            </div>
+
+            <form id="login-form" class="form-stack" autocomplete="on">
+                <div class="form-group">
+                    <label for="login-username">Usuario</label>
+                    <input
+                        type="text"
+                        id="login-username"
+                        name="username"
+                        placeholder="Ej: docente"
+                        required
+                    />
+                </div>
+
+                <div class="form-group">
+                    <label for="login-password">Contraseña</label>
+                    <input
+                        type="password"
+                        id="login-password"
+                        name="password"
+                        placeholder="Ingrese su contraseña"
+                        required
+                    />
+                </div>
+
+                <div id="login-error" class="alert alert-error hidden"></div>
+
+                <button type="submit" class="btn btn-primary btn-block" id="btn-login">
+                    Iniciar Sesión
+                </button>
+            </form>
+
+            <div class="demo-credentials">
+                <div class="demo-info">
+                    <strong>Usuario de ejemplo preconfigurado:</strong>
+                    <span>Usuario: <code>docente</code> | Contraseña: <code>docente123</code></span>
+                </div>
+                <button type="button" id="btn-fill-demo" class="btn btn-outline btn-sm">
+                    Completar credenciales
+                </button>
+            </div>
+        </section>
+    </main>
+
+    <!-- PANEL PRINCIPAL DEL SISTEMA (PROTEGIDO POR SESIÓN) -->
+    <div id="app-screen" class="app-layout hidden">
+        <header class="topbar">
+            <div class="topbar-brand">
+                <div class="brand-icon brand-icon-sm">SA</div>
+                <div>
+                    <h2>Control de Asistencia</h2>
+                    <span id="user-display" class="user-badge">Docente</span>
+                </div>
+            </div>
+
+            <div class="topbar-actions">
+                <div class="cutoff-pill" title="Horario límite para cálculo de tardanza">
+                    <span>Límite Tardanza:</span>
+                    <strong id="header-horario-limite">08:15</strong>
+                </div>
+                <button type="button" id="btn-logout" class="btn btn-danger btn-sm">
+                    Cerrar Sesión
+                </button>
+            </div>
+        </header>
+
+        <!-- NAVEGACIÓN DE SECCIONES -->
+        <nav class="nav-tabs" aria-label="Secciones del sistema">
+            <button type="button" class="nav-tab active" data-tab="tab-asistencia">
+                1. Asistencia y Día
+            </button>
+            <button type="button" class="nav-tab" data-tab="tab-reporte">
+                2. Informe por Alumno
+            </button>
+            <button type="button" class="nav-tab" data-tab="tab-alumnos">
+                3. Gestión de Alumnos
+            </button>
+        </nav>
+
+        <main class="main-content">
+            <!-- SECCIÓN 1: REGISTRAR ASISTENCIA, HORARIO LÍMITE Y ASISTENCIAS DEL DÍA -->
+            <section id="tab-asistencia" class="tab-panel active">
+                <div class="grid-2col">
+                    <!-- TARJETA: REGISTRAR ASISTENCIA -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>Registrar Asistencia por DNI</h3>
+                            <span id="live-status-preview" class="badge badge-presente">
+                                Cálculo activo
+                            </span>
+                        </div>
+
+                        <form id="form-asistencia" class="form-stack">
+                            <div class="form-group">
+                                <label for="asistencia-dni">DNI del Alumno *</label>
+                                <input
+                                    type="text"
+                                    id="asistencia-dni"
+                                    list="datalist-alumnos"
+                                    placeholder="Ingrese DNI (solo números, mín. 7 dígitos)"
+                                    required
+                                />
+                                <datalist id="datalist-alumnos"></datalist>
+                                <small class="help-text">
+                                    Puede escribir el DNI o elegir un alumno del listado desplegable.
+                                </small>
+                            </div>
+
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="asistencia-fecha">Fecha *</label>
+                                    <input type="date" id="asistencia-fecha" required />
+                                </div>
+                                <div class="form-group">
+                                    <label for="asistencia-hora">Hora de registro *</label>
+                                    <input type="time" id="asistencia-hora" required />
+                                </div>
+                            </div>
+
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="asistencia-estado">Modalidad / Estado *</label>
+                                    <select id="asistencia-estado">
+                                        <option value="auto">
+                                            Automático según horario límite (Presente / Tardanza)
+                                        </option>
+                                        <option value="ausente">Ausente (Faltó a clase)</option>
+                                        <option value="presente">Forzar Presente</option>
+                                        <option value="tardanza">Forzar Tardanza</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="asistencia-materia">Materia</label>
+                                    <input
+                                        type="text"
+                                        id="asistencia-materia"
+                                        value="Programación III"
+                                        placeholder="Programación III"
+                                    />
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="asistencia-observacion">Observación (opcional)</label>
+                                <input
+                                    type="text"
+                                    id="asistencia-observacion"
+                                    placeholder="Ej: Ingreso puntual / Certificado / Aviso previo"
+                                />
+                            </div>
+
+                            <button type="submit" class="btn btn-primary btn-block">
+                                Registrar Asistencia
+                            </button>
+                        </form>
+                    </div>
+
+                    <!-- TARJETA: CONFIGURAR HORARIO LÍMITE Y RESUMEN RÁPIDO -->
+                    <div class="stack-column">
+                        <div class="card">
+                            <div class="card-header">
+                                <h3>Horario Límite de Tardanza</h3>
+                            </div>
+                            <p class="card-description">
+                                Todo ingreso en modo automático con hora posterior al horario límite se
+                                registrará automáticamente como <strong>Tardanza</strong>; hasta esa
+                                hora inclusive se registrará como <strong>Presente</strong>.
+                            </p>
+                            <form id="form-configuracion" class="form-inline-group">
+                                <div class="form-group">
+                                    <label for="config-horario">Horario límite (HH:MM)</label>
+                                    <input type="time" id="config-horario" required />
+                                </div>
+                                <div class="form-group">
+                                    <label for="config-materia">Materia por defecto</label>
+                                    <input
+                                        type="text"
+                                        id="config-materia"
+                                        placeholder="Programación III"
+                                        required
+                                    />
+                                </div>
+                                <button type="submit" class="btn btn-secondary">
+                                    Guardar Configuración
+                                </button>
+                            </form>
+                        </div>
+
+                        <div class="card">
+                            <div class="card-header">
+                                <h3>Padrón Rápido de Alumnos</h3>
+                                <span class="help-text">Clic para usar DNI</span>
+                            </div>
+                            <div id="quick-alumnos-chips" class="chips-container"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TARJETA: ASISTENCIAS DE UN DÍA -->
+                <div class="card mt-lg">
+                    <div class="card-header card-header-wrap">
+                        <div>
+                            <h3>Asistencias Registradas por Día</h3>
+                            <p class="card-description">
+                                Consulte los presentes, tardanzas y ausencias de una fecha específica.
+                            </p>
+                        </div>
+                        <div class="filter-bar">
+                            <input type="date" id="filtro-fecha-dia" />
+                            <button type="button" id="btn-filtrar-dia" class="btn btn-primary btn-sm">
+                                Consultar Fecha
+                            </button>
+                            <button type="button" id="btn-ver-hoy" class="btn btn-outline btn-sm">
+                                Hoy
+                            </button>
+                            <button type="button" id="btn-ver-todas" class="btn btn-outline btn-sm">
+                                Ver Todas
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="kpi-grid">
+                        <div class="kpi-box">
+                            <span class="kpi-label">Total Registros</span>
+                            <strong id="dia-total" class="kpi-value">0</strong>
+                        </div>
+                        <div class="kpi-box kpi-presente">
+                            <span class="kpi-label">Presentes</span>
+                            <strong id="dia-presentes" class="kpi-value">0</strong>
+                        </div>
+                        <div class="kpi-box kpi-tardanza">
+                            <span class="kpi-label">Tardanzas</span>
+                            <strong id="dia-tardanzas" class="kpi-value">0</strong>
+                        </div>
+                        <div class="kpi-box kpi-ausente">
+                            <span class="kpi-label">Ausentes</span>
+                            <strong id="dia-ausentes" class="kpi-value">0</strong>
+                        </div>
+                    </div>
+
+                    <div class="table-responsive">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Fecha</th>
+                                    <th>Hora</th>
+                                    <th>DNI</th>
+                                    <th>Alumno</th>
+                                    <th>Curso</th>
+                                    <th>Materia</th>
+                                    <th>Estado</th>
+                                    <th>Observación</th>
+                                    <th>Acción</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tabla-asistencias-dia">
+                                <tr>
+                                    <td colspan="9" class="empty-row">Cargando registros...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- SECCIÓN 2: INFORME POR ALUMNO -->
+            <section id="tab-reporte" class="tab-panel">
+                <div class="card">
+                    <div class="card-header card-header-wrap">
+                        <div>
+                            <h3>Informe Estadístico e Historial por Alumno</h3>
+                            <p class="card-description">
+                                Ingrese el DNI del alumno para visualizar su historial de fechas, estados,
+                                totales y porcentajes de asistencia.
+                            </p>
+                        </div>
+                        <form id="form-buscar-reporte" class="filter-bar">
+                            <input
+                                type="text"
+                                id="reporte-dni-input"
+                                list="datalist-alumnos"
+                                placeholder="Ingrese DNI (ej: 40123456)"
+                                required
+                            />
+                            <button type="submit" class="btn btn-primary">
+                                Generar Informe
+                            </button>
+                        </form>
+                    </div>
+
+                    <div id="reporte-empty" class="empty-state">
+                        Seleccione o ingrese un DNI (por ejemplo <code>40123456</code>) para consultar el
+                        informe detallado del alumno.
+                    </div>
+
+                    <div id="reporte-resultado" class="hidden">
+                        <div class="student-profile-banner">
+                            <div>
+                                <h4 id="rep-nombre-completo">-</h4>
+                                <p id="rep-meta-info" class="subtitle">-</p>
+                            </div>
+                            <span id="rep-curso-badge" class="badge badge-info">-</span>
+                        </div>
+
+                        <div class="kpi-grid">
+                            <div class="kpi-box">
+                                <span class="kpi-label">Total Clases</span>
+                                <strong id="rep-total" class="kpi-value">0</strong>
+                                <span class="kpi-sub">100% del historial</span>
+                            </div>
+                            <div class="kpi-box kpi-presente">
+                                <span class="kpi-label">Presentes</span>
+                                <strong id="rep-presentes" class="kpi-value">0</strong>
+                                <span id="rep-pct-presentes" class="kpi-sub">0%</span>
+                            </div>
+                            <div class="kpi-box kpi-tardanza">
+                                <span class="kpi-label">Tardanzas</span>
+                                <strong id="rep-tardanzas" class="kpi-value">0</strong>
+                                <span id="rep-pct-tardanzas" class="kpi-sub">0%</span>
+                            </div>
+                            <div class="kpi-box kpi-ausente">
+                                <span class="kpi-label">Ausentes</span>
+                                <strong id="rep-ausentes" class="kpi-value">0</strong>
+                                <span id="rep-pct-ausentes" class="kpi-sub">0%</span>
+                            </div>
+                        </div>
+
+                        <!-- BARRA DE PROPORCIÓN VISUAL -->
+                        <div class="progress-wrapper">
+                            <div class="progress-bar-multi">
+                                <div id="bar-presentes" class="bar-segment bar-presente" style="width: 0%"></div>
+                                <div id="bar-tardanzas" class="bar-segment bar-tardanza" style="width: 0%"></div>
+                                <div id="bar-ausentes" class="bar-segment bar-ausente" style="width: 0%"></div>
+                            </div>
+                        </div>
+
+                        <div class="table-responsive mt-md">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Fecha</th>
+                                        <th>Hora</th>
+                                        <th>Estado</th>
+                                        <th>Materia</th>
+                                        <th>Observación</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tabla-historial-alumno"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- SECCIÓN 3: GESTIÓN DE ALUMNOS (ALTA, EDICIÓN, BAJA Y BÚSQUEDA) -->
+            <section id="tab-alumnos" class="tab-panel">
+                <div class="grid-2col-asymmetric">
+                    <!-- FORMULARIO ALTA / EDICIÓN DE ALUMNO -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 id="form-alumno-titulo">Agregar Nuevo Alumno</h3>
+                        </div>
+
+                        <form id="form-alumno" class="form-stack">
+                            <input type="hidden" id="alumno-modo-edicion" value="false" />
+
+                            <div class="form-group">
+                                <label for="alumno-dni">DNI *</label>
+                                <input
+                                    type="text"
+                                    id="alumno-dni"
+                                    placeholder="Ej: 40123456 (mínimo 7 dígitos)"
+                                    required
+                                />
+                            </div>
+
+                            <div class="form-group">
+                                <label for="alumno-nombre">Nombre *</label>
+                                <input
+                                    type="text"
+                                    id="alumno-nombre"
+                                    placeholder="Ej: Martín"
+                                    required
+                                />
+                            </div>
+
+                            <div class="form-group">
+                                <label for="alumno-apellido">Apellido *</label>
+                                <input
+                                    type="text"
+                                    id="alumno-apellido"
+                                    placeholder="Ej: Gómez"
+                                    required
+                                />
+                            </div>
+
+                            <div class="form-group">
+                                <label for="alumno-curso">Curso / Comisión *</label>
+                                <input
+                                    type="text"
+                                    id="alumno-curso"
+                                    placeholder="Ej: 3° Año - Comisión A"
+                                    required
+                                />
+                            </div>
+
+                            <div class="form-actions">
+                                <button type="submit" id="btn-guardar-alumno" class="btn btn-primary btn-block">
+                                    Guardar Alumno
+                                </button>
+                                <button
+                                    type="button"
+                                    id="btn-cancelar-edicion"
+                                    class="btn btn-outline btn-block hidden"
+                                >
+                                    Cancelar Edición
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <!-- TABLA DE ALUMNOS -->
+                    <div class="card">
+                        <div class="card-header card-header-wrap">
+                            <h3>Padrón de Alumnos Registrados</h3>
+                            <div class="filter-bar">
+                                <input
+                                    type="search"
+                                    id="buscar-alumno-input"
+                                    placeholder="Buscar por DNI, nombre, apellido o curso..."
+                                />
+                            </div>
+                        </div>
+
+                        <div class="table-responsive">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>DNI</th>
+                                        <th>Apellido y Nombre</th>
+                                        <th>Curso</th>
+                                        <th>Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tabla-alumnos">
+                                    <tr>
+                                        <td colspan="4" class="empty-row">Cargando alumnos...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
