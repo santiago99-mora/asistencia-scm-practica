@@ -129,21 +129,51 @@ def init_db(db_path: Optional[str] = None) -> None:
             """
         )
 
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS asistencias (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                dni TEXT NOT NULL,
-                fecha TEXT NOT NULL,
-                hora TEXT NOT NULL,
-                estado TEXT NOT NULL CHECK(estado IN ('presente', 'tardanza', 'ausente')),
-                materia TEXT NOT NULL DEFAULT 'Programación III',
-                observacion TEXT NOT NULL DEFAULT '',
-                UNIQUE(dni, fecha),
-                FOREIGN KEY (dni) REFERENCES alumnos(dni) ON DELETE CASCADE
-            );
-            """
-        )
+        # Migración automática si la tabla asistencias tenía UNIQUE(dni, fecha) sin materia
+        tabla_existente = cursor.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='asistencias';"
+        ).fetchone()
+        if tabla_existente and "UNIQUE(dni, fecha)" in (tabla_existente["sql"] or ""):
+            cursor.execute("ALTER TABLE asistencias RENAME TO asistencias_old;")
+            cursor.execute(
+                """
+                CREATE TABLE asistencias (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    dni TEXT NOT NULL,
+                    fecha TEXT NOT NULL,
+                    hora TEXT NOT NULL,
+                    estado TEXT NOT NULL CHECK(estado IN ('presente', 'tardanza', 'ausente')),
+                    materia TEXT NOT NULL DEFAULT 'Programación III',
+                    observacion TEXT NOT NULL DEFAULT '',
+                    UNIQUE(dni, fecha, materia),
+                    FOREIGN KEY (dni) REFERENCES alumnos(dni) ON DELETE CASCADE
+                );
+                """
+            )
+            cursor.execute(
+                """
+                INSERT OR IGNORE INTO asistencias (id, dni, fecha, hora, estado, materia, observacion)
+                SELECT id, dni, fecha, hora, estado, materia, observacion
+                FROM asistencias_old;
+                """
+            )
+            cursor.execute("DROP TABLE asistencias_old;")
+        else:
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS asistencias (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    dni TEXT NOT NULL,
+                    fecha TEXT NOT NULL,
+                    hora TEXT NOT NULL,
+                    estado TEXT NOT NULL CHECK(estado IN ('presente', 'tardanza', 'ausente')),
+                    materia TEXT NOT NULL DEFAULT 'Programación III',
+                    observacion TEXT NOT NULL DEFAULT '',
+                    UNIQUE(dni, fecha, materia),
+                    FOREIGN KEY (dni) REFERENCES alumnos(dni) ON DELETE CASCADE
+                );
+                """
+            )
 
         # Configuración por defecto (horario límite para cálculo de tardanza)
         cursor.execute(

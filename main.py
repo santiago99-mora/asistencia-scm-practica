@@ -25,13 +25,14 @@ historial_registros: List[Dict[str, Any]] = []
 
 def validar_dni(dni_raw: Any) -> Optional[str]:
     """
-    Valida que el DNI sea una cadena numérica de al menos 7 dígitos.
-    Devuelve el DNI limpio (sin espacios laterales) o None si es inválido.
+    Valida que el DNI sea una cadena numérica de entre 7 y 8 dígitos.
+    Limpia espacios en blanco (laterales e internos) y puntos separadores.
+    Devuelve el DNI limpio o None si es inválido.
     """
     if not dni_raw or not isinstance(dni_raw, str):
         return None
-    dni = dni_raw.strip()
-    if len(dni) >= 7 and dni.isdigit():
+    dni = dni_raw.strip().replace(".", "").replace(" ", "")
+    if 7 <= len(dni) <= 8 and dni.isdigit():
         return dni
     return None
 
@@ -42,23 +43,30 @@ def registrar_asistencia(datos_alumno: dict) -> bool:
     """
     global total_asistencias, historial_registros
 
-    dni_raw = datos_alumno.get("dni")
-    if not dni_raw or not isinstance(dni_raw, str):
-        print("[ERROR] El campo DNI es obligatorio")
+    if not isinstance(datos_alumno, dict):
+        print("[ERROR] El formato de datos del alumno debe ser un diccionario")
         return False
 
-    dni = dni_raw.strip()
-    materia = datos_alumno.get("materia", "Programación III")
+    dni_raw = datos_alumno.get("dni")
+    dni = validar_dni(dni_raw)
+    if not dni:
+        print(f"[ERROR] Datos inválidos para DNI: {dni_raw}")
+        return False
 
-    if len(dni) >= 7 and dni.isdigit():
-        total_asistencias += 1
-        registro = {"id": total_asistencias, "dni": dni, "materia": materia}
-        historial_registros.append(registro)
-        print(f"[OK] Asistencia N°{total_asistencias} | DNI: {dni} | Materia: {materia}")
-        return True
+    if "materia" in datos_alumno:
+        materia_raw = datos_alumno.get("materia")
+        if not isinstance(materia_raw, str) or not materia_raw.strip():
+            print("[ERROR] El campo materia no puede estar vacío")
+            return False
+        materia = materia_raw.strip()
+    else:
+        materia = "Programación III"
 
-    print(f"[ERROR] Datos inválidos para DNI: {dni}")
-    return False
+    total_asistencias += 1
+    registro = {"id": total_asistencias, "dni": dni, "materia": materia}
+    historial_registros.append(registro)
+    print(f"[OK] Asistencia N°{total_asistencias} | DNI: {dni} | Materia: {materia}")
+    return True
 
 
 def obtener_reporte_estadistico() -> Dict[str, Any]:
@@ -77,6 +85,14 @@ def obtener_reporte_estadistico() -> Dict[str, Any]:
 
 HORA_REGEX = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)$")
 FECHA_REGEX = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+HORA_APERTURA_MINIMA = "06:00"
+TOLERANCIA_TARDANZA_MINUTOS = 45
+
+
+def _hora_a_minutos(hora_hhmm: str) -> int:
+    horas, minutos = map(int, hora_hhmm.split(":"))
+    return horas * 60 + minutos
 
 
 def validar_formato_hora(hora: str) -> str:
@@ -116,8 +132,11 @@ def calcular_estado_asistencia(
     Calcula el estado de asistencia ('presente', 'tardanza' o 'ausente').
     - Si estado_solicitado es 'ausente', registra 'ausente'.
     - Si forzar_estado es True y se indica un estado válido, respeta dicho estado.
-    - Si se proporciona hora_ingreso (o el modo es automático), compara contra
-      horario_limite: si hora_ingreso > horario_limite -> 'tardanza', sino 'presente'.
+    - En modo automático:
+      * Rechaza horarios de madrugada previos a HORA_APERTURA_MINIMA (06:00).
+      * Hasta horario_limite inclusive -> 'presente'.
+      * Desde horario_limite + 1 min hasta TOLERANCIA_TARDANZA_MINUTOS (45 min) -> 'tardanza'.
+      * Pasado el margen máximo de tolerancia (ej. 23:55) -> 'ausente'.
     """
     estado_norm = (estado_solicitado or "").strip().lower() or None
 
@@ -143,9 +162,26 @@ def calcular_estado_asistencia(
     hora_evaluar = validar_formato_hora(hora_ingreso or datetime.now().strftime("%H:%M"))
     limite_evaluar = validar_formato_hora(horario_limite)
 
-    if hora_evaluar > limite_evaluar:
+    min_ingreso = _hora_a_minutos(hora_evaluar)
+    min_apertura = _hora_a_minutos(HORA_APERTURA_MINIMA)
+    min_limite = _hora_a_minutos(limite_evaluar)
+
+    if min_ingreso < min_apertura:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"La hora de registro ({hora_evaluar}) está fuera del horario de cursada "
+                f"(apertura a partir de las {HORA_APERTURA_MINIMA})."
+            ),
+        )
+
+    if min_ingreso <= min_limite:
+        return "presente"
+
+    if min_ingreso <= min_limite + TOLERANCIA_TARDANZA_MINUTOS:
         return "tardanza"
-    return "presente"
+
+    return "ausente"
 
 
 class LoginRequest(BaseModel):
@@ -383,7 +419,7 @@ def obtener_alumno(
     if not dni_limpio:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="El DNI debe ser numérico y tener al menos 7 dígitos.",
+            detail="El DNI debe ser numérico y tener entre 7 y 8 dígitos.",
         )
 
     with database.get_db() as conn:
@@ -409,7 +445,7 @@ def crear_alumno(
     if not dni_limpio:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="DNI inválido. Debe contener solo números y al menos 7 dígitos.",
+            detail="DNI inválido. Debe contener solo números y tener entre 7 y 8 dígitos.",
         )
 
     nombre = datos.nombre.strip()
@@ -464,7 +500,7 @@ def editar_alumno(
     if not dni_limpio:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="DNI inválido. Debe contener solo números y al menos 7 dígitos.",
+            detail="DNI inválido. Debe contener solo números y tener entre 7 y 8 dígitos.",
         )
 
     nombre = datos.nombre.strip()
@@ -553,7 +589,7 @@ def crear_asistencia(
     if not dni_limpio:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="DNI inválido. Debe ser numérico y tener al menos 7 dígitos.",
+            detail="DNI inválido. Debe ser numérico y tener entre 7 y 8 dígitos.",
         )
 
     fecha_registro = validar_formato_fecha(datos.fecha) if datos.fecha else date.today().strftime("%Y-%m-%d")
@@ -571,23 +607,28 @@ def crear_asistencia(
                 detail=f"El alumno con DNI {dni_limpio} no existe en el padrón.",
             )
 
+        config = obtener_configuracion_db(conn)
+        horario_limite = config["horario_limite"]
+        materia_final = (datos.materia or "").strip() or config["materia_default"]
+        observacion_final = (datos.observacion or "").strip()
+
         duplicado = conn.execute(
-            "SELECT id, estado, hora FROM asistencias WHERE dni = ? AND fecha = ?;",
-            (dni_limpio, fecha_registro),
+            """
+            SELECT id, estado, hora, materia
+            FROM asistencias
+            WHERE dni = ? AND fecha = ? AND LOWER(materia) = LOWER(?);
+            """,
+            (dni_limpio, fecha_registro, materia_final),
         ).fetchone()
         if duplicado:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=(
                     f"El alumno con DNI {dni_limpio} ya tiene asistencia registrada "
-                    f"el día {fecha_registro} (Estado: {duplicado['estado']} a las {duplicado['hora']})."
+                    f"en '{duplicado['materia']}' el día {fecha_registro} "
+                    f"(Estado: {duplicado['estado']} a las {duplicado['hora']})."
                 ),
             )
-
-        config = obtener_configuracion_db(conn)
-        horario_limite = config["horario_limite"]
-        materia_final = (datos.materia or "").strip() or config["materia_default"]
-        observacion_final = (datos.observacion or "").strip()
 
         estado_final = calcular_estado_asistencia(
             hora_ingreso=hora_provista,
@@ -713,7 +754,7 @@ def reporte_por_alumno(
     if not dni_limpio:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="DNI inválido. Debe contener solo números y al menos 7 dígitos.",
+            detail="DNI inválido. Debe contener solo números y tener entre 7 y 8 dígitos.",
         )
 
     with database.get_db() as conn:
